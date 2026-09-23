@@ -16,6 +16,7 @@ import type {
   Vendor,
   Customer,
   Product,
+  ProductVariant,
   Inventory,
   ExchangeRate,
 } from '@/lib/types/database';
@@ -45,6 +46,17 @@ interface CartItem {
   unit_price: number;
   stock_available: number;
 }
+
+type ProductWithRelations = Product & {
+  inventory?: Inventory[];
+  variants?: ProductVariant[];
+  prices_by_currency?: Array<{
+    id: string;
+    currency_id: string;
+    price: number;
+    variant_id: string | null;
+  }>;
+};
 
 interface Props {
   open: boolean;
@@ -82,9 +94,9 @@ export function NewOrderModal({
   const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
 
   const [productSearch, setProductSearch] = useState('');
-  const [productResults, setProductResults] = useState<
-    (Product & { inventory?: Inventory[] })[]
-  >([]);
+  const [productResults, setProductResults] = useState<ProductWithRelations[]>(
+    []
+  );
   const [searching, setSearching] = useState(false);
 
   const [cart, setCart] = useState<CartItem[]>([]);
@@ -145,17 +157,15 @@ export function NewOrderModal({
       const { data } = await supabase
         .from('products')
         .select(
-          `id, name, sku, barcode, unit, cost, base_price, has_variants,
-           inventory:inventory(id, stock, reserved, available, variant_id),
-           variants:product_variants(id, name, sku, base_price, cost),
-           prices_by_currency:prices_by_currency(id, currency_id, price, variant_id)`
+          `id, name, sku, barcode, unit, cost, base_price, has_variants, category_id, brand, slug, description, min_stock, is_active, is_featured, created_at, updated_at,
+           inventory:inventory(id, stock, reserved, available, variant_id, product_id, updated_at),
+           variants:product_variants(id, name, sku, base_price, cost, product_id, attributes, is_active, created_at, updated_at),
+           prices_by_currency:prices_by_currency(id, currency_id, price, variant_id, product_id, min_quantity, created_at, updated_at)`
         )
         .eq('is_active', true)
         .or(`name.ilike.%${q}%,sku.ilike.%${q}%,barcode.ilike.%${q}%`)
         .limit(20);
-      setProductResults(
-        (data ?? []) as unknown as (Product & { inventory?: Inventory[] })[]
-      );
+      setProductResults((data ?? []) as unknown as ProductWithRelations[]);
       setSearching(false);
     }, 300);
     return () => clearTimeout(t);
@@ -191,7 +201,7 @@ export function NewOrderModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.timestamp]);
 
-  function getPrice(product: Product, variantId: string | null): number {
+  function getPrice(product: ProductWithRelations, variantId: string | null): number {
     const priceByCurrency = product.prices_by_currency?.find(
       (p) => p.currency_id === currencyId && !p.variant_id
     );
@@ -220,13 +230,13 @@ export function NewOrderModal({
         );
   }
 
-  function getStock(product: Product, variantId: string | null): number {
+  function getStock(product: ProductWithRelations, variantId: string | null): number {
     const inv = product.inventory?.find((i) => i.variant_id === variantId);
     return Number(inv?.available ?? 0);
   }
 
   function addToCart(
-    product: Product,
+    product: ProductWithRelations,
     variantId: string | null,
     variantName: string | null,
     stockAvailable: number
