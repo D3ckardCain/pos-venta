@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, useTransition } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useFormState } from 'react-dom';
 import { useRouter } from 'next/navigation';
 import {
@@ -19,6 +19,7 @@ import type {
   Vendor,
   Customer,
   Product,
+  ProductVariant,
   Inventory,
   CashRegister,
   ExchangeRate,
@@ -28,7 +29,6 @@ import type {
 import {
   createSaleAction,
   parkSaleAction,
-  updateParkedSaleAction,
   findByBarcodeAction,
   type ActionState,
 } from './actions';
@@ -61,6 +61,17 @@ interface CartItem {
   currency_code: string;
 }
 
+type ProductWithRelations = Product & {
+  inventory?: Inventory[];
+  variants?: ProductVariant[];
+  prices_by_currency?: Array<{
+    id: string;
+    currency_id: string;
+    price: number;
+    variant_id: string | null;
+  }>;
+};
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -88,10 +99,6 @@ export function NewSaleModal({
 
   const isResuming = !!parkedSale;
 
-  // ============================================
-  // ESTADO DEL FORMULARIO
-  // ============================================
-
   const primaryCurrency = currencies[0];
 
   const [currencyId, setCurrencyId] = useState(
@@ -115,9 +122,9 @@ export function NewSaleModal({
   const [exchangeRate, setExchangeRate] = useState<ExchangeRate | null>(null);
 
   const [productSearch, setProductSearch] = useState('');
-  const [productResults, setProductResults] = useState<
-    (Product & { inventory?: Inventory[] })[]
-  >([]);
+  const [productResults, setProductResults] = useState<ProductWithRelations[]>(
+    []
+  );
   const [searching, setSearching] = useState(false);
 
   const [barcode, setBarcode] = useState('');
@@ -156,10 +163,6 @@ export function NewSaleModal({
     [open, parkedSaleId]
   );
 
-  // ============================================
-  // FORMS
-  // ============================================
-
   const [createState, createFormAction] = useFormState(
     createSaleAction,
     initialActionState
@@ -168,10 +171,6 @@ export function NewSaleModal({
     parkSaleAction,
     initialActionState
   );
-
-  // ============================================
-  // EFECTOS
-  // ============================================
 
   useEffect(() => {
     if (!open || !primaryCurrency || !currencyId) return;
@@ -207,7 +206,6 @@ export function NewSaleModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [currencyId, open, primaryCurrency]);
 
-  // Buscar productos con debounce
   useEffect(() => {
     if (!open) return;
     const t = setTimeout(async () => {
@@ -220,24 +218,21 @@ export function NewSaleModal({
       const { data } = await supabase
         .from('products')
         .select(
-          `id, name, sku, barcode, unit, cost, base_price, has_variants,
-           inventory:inventory(id, stock, reserved, available, variant_id),
-           variants:product_variants(id, name, sku, base_price, cost),
-           prices_by_currency:prices_by_currency(id, currency_id, price, variant_id)`
+          `id, name, sku, barcode, unit, cost, base_price, has_variants, category_id, brand, slug, description, min_stock, is_active, is_featured, created_at, updated_at,
+           inventory:inventory(id, stock, reserved, available, variant_id, product_id, updated_at),
+           variants:product_variants(id, name, sku, base_price, cost, product_id, attributes, is_active, created_at, updated_at),
+           prices_by_currency:prices_by_currency(id, currency_id, price, variant_id, product_id, min_quantity, created_at, updated_at)`
         )
         .eq('is_active', true)
         .or(`name.ilike.%${q}%,sku.ilike.%${q}%,barcode.ilike.%${q}%`)
         .limit(20);
-      setProductResults(
-        (data ?? []) as unknown as (Product & { inventory?: Inventory[] })[]
-      );
+      setProductResults((data ?? []) as unknown as ProductWithRelations[]);
       setSearching(false);
     }, 300);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productSearch, open]);
 
-  // Reset al cerrar
   useEffect(() => {
     if (!open && !parkedSale) {
       setCart([]);
@@ -254,7 +249,6 @@ export function NewSaleModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Al éxito de crear venta
   useEffect(() => {
     if (createState.timestamp > 0) {
       if (createState.success) {
@@ -270,7 +264,6 @@ export function NewSaleModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [createState.timestamp]);
 
-  // Al éxito de pausar venta
   useEffect(() => {
     if (parkState.timestamp > 0) {
       if (parkState.success) {
@@ -284,17 +277,14 @@ export function NewSaleModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parkState.timestamp]);
 
-  // ============================================
-  // LÓGICA DE NEGOCIO
-  // ============================================
-
-  function getPrice(product: Product, variantId: string | null): number {
+  function getPrice(
+    product: ProductWithRelations,
+    variantId: string | null
+  ): number {
     const priceByCurrency = product.prices_by_currency?.find(
       (p) => p.currency_id === currencyId && !p.variant_id
     );
-    if (priceByCurrency && !isBaseCurrency) {
-      return Number(priceByCurrency.price);
-    }
+    if (priceByCurrency && !isBaseCurrency) return Number(priceByCurrency.price);
 
     if (variantId) {
       const variant = product.variants?.find((v) => v.id === variantId);
@@ -319,13 +309,16 @@ export function NewSaleModal({
         );
   }
 
-  function getStock(product: Product, variantId: string | null): number {
+  function getStock(
+    product: ProductWithRelations,
+    variantId: string | null
+  ): number {
     const inv = product.inventory?.find((i) => i.variant_id === variantId);
     return Number(inv?.available ?? 0);
   }
 
   function addToCart(
-    product: Product,
+    product: ProductWithRelations,
     variantId: string | null,
     variantName: string | null,
     stockAvailable: number
@@ -392,12 +385,13 @@ export function NewSaleModal({
       return;
     }
 
-    const product = res.product as unknown as Product & {
-      inventory?: Inventory[];
-    };
+    const product = res.product as unknown as ProductWithRelations;
 
-    if (product.has_variants && product.variants && product.variants.length > 0) {
-      // Si tiene variantes, mostrar resultados de búsqueda
+    if (
+      product.has_variants &&
+      product.variants &&
+      product.variants.length > 0
+    ) {
       setProductResults([product]);
       setProductSearch(product.name);
       showToast(
@@ -420,7 +414,10 @@ export function NewSaleModal({
       return;
     }
     if (newQty > item.stock_available) {
-      showToast(`Stock insuficiente (disponible: ${item.stock_available})`, 'error');
+      showToast(
+        `Stock insuficiente (disponible: ${item.stock_available})`,
+        'error'
+      );
       return;
     }
     setCart(cart.map((c, i) => (i === index ? { ...c, quantity: newQty } : c)));
@@ -436,7 +433,9 @@ export function NewSaleModal({
     const discount = Number(newDiscount);
     if (isNaN(discount) || discount < 0) return;
     setCart(
-      cart.map((c, i) => (i === index ? { ...c, discount_amount: discount } : c))
+      cart.map((c, i) =>
+        i === index ? { ...c, discount_amount: discount } : c
+      )
     );
   }
 
@@ -444,7 +443,6 @@ export function NewSaleModal({
     setCart(cart.filter((_, i) => i !== index));
   }
 
-  // Totales
   const subtotal = cart.reduce(
     (sum, item) => sum + item.unit_price * item.quantity - item.discount_amount,
     0
@@ -455,7 +453,6 @@ export function NewSaleModal({
   const rate = isBaseCurrency ? 1 : exchangeRate?.rate ?? 0;
   const baseTotal = total * rate;
 
-  // Payload de items para el servidor
   const itemsPayload = cart.map((item) => ({
     product_id: item.product_id,
     variant_id: item.variant_id,
@@ -476,7 +473,6 @@ export function NewSaleModal({
         size="full"
       >
         <div className="space-y-4">
-          {/* Configuración */}
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
             <Select
               label="Moneda"
@@ -561,11 +557,12 @@ export function NewSaleModal({
             )}
           </div>
 
-          {/* Escáner de código de barras */}
           <div className="rounded-md border bg-background p-3">
             <div className="flex items-center gap-2">
               <Scan className="h-4 w-4 text-muted-foreground" />
-              <p className="text-sm font-medium">Escanear codigo de barras / QR</p>
+              <p className="text-sm font-medium">
+                Escanear codigo de barras / QR
+              </p>
             </div>
             <div className="mt-2 flex gap-2">
               <input
@@ -593,12 +590,11 @@ export function NewSaleModal({
               </Button>
             </div>
             <p className="mt-1.5 text-xs text-muted-foreground">
-              Compatible con lectores USB. Al recibir el codigo, presiona Enter para
-              agregar el producto.
+              Compatible con lectores USB. Al recibir el codigo, presiona Enter
+              para agregar el producto.
             </p>
           </div>
 
-          {/* Búsqueda por nombre */}
           <div>
             <label className="mb-1.5 block text-sm font-medium">
               Buscar por nombre o SKU
@@ -684,7 +680,6 @@ export function NewSaleModal({
             )}
           </div>
 
-          {/* Carrito */}
           {cart.length > 0 && (
             <div className="rounded-md border">
               <div className="border-b bg-muted/30 px-3 py-2">
@@ -720,7 +715,9 @@ export function NewSaleModal({
                         min={1}
                         max={item.stock_available}
                         value={item.quantity}
-                        onChange={(e) => updateQuantity(i, Number(e.target.value))}
+                        onChange={(e) =>
+                          updateQuantity(i, Number(e.target.value))
+                        }
                         className="w-14 rounded-md border bg-background px-1 py-1 text-center font-mono text-sm"
                       />
                       <button
@@ -762,7 +759,8 @@ export function NewSaleModal({
                     <div className="w-20 text-right">
                       <p className="font-mono text-sm font-medium">
                         {formatCurrency(
-                          item.unit_price * item.quantity - item.discount_amount,
+                          item.unit_price * item.quantity -
+                            item.discount_amount,
                           selectedCurrency
                         )}
                       </p>
@@ -788,7 +786,6 @@ export function NewSaleModal({
             </div>
           )}
 
-          {/* Totales */}
           <div className="rounded-md border bg-muted/20 p-4">
             <div className="space-y-2 text-sm">
               <div className="flex justify-between">
@@ -826,7 +823,6 @@ export function NewSaleModal({
             </div>
           </div>
 
-          {/* Notas */}
           <Textarea
             label="Notas (opcional)"
             rows={2}
@@ -835,7 +831,6 @@ export function NewSaleModal({
             placeholder="Observaciones sobre la venta..."
           />
 
-          {/* Errores */}
           {createState.error && (
             <div
               role="alert"
@@ -845,13 +840,12 @@ export function NewSaleModal({
             </div>
           )}
 
-          {/* Formulario oculto para submit */}
-          <form
-            id="new-sale-form"
-            action={createFormAction}
-            className="hidden"
-          >
-            <input type="hidden" name="items" value={JSON.stringify(itemsPayload)} />
+          <form id="new-sale-form" action={createFormAction} className="hidden">
+            <input
+              type="hidden"
+              name="items"
+              value={JSON.stringify(itemsPayload)}
+            />
             <input type="hidden" name="currency_id" value={currencyId} />
             <input
               type="hidden"
@@ -865,11 +859,7 @@ export function NewSaleModal({
               name="cash_register_id"
               value={cashRegisterId}
             />
-            <input
-              type="hidden"
-              name="discount_amount"
-              value={discountAmount}
-            />
+            <input type="hidden" name="discount_amount" value={discountAmount} />
             <input type="hidden" name="notes" value={notes} />
             <input
               type="hidden"
@@ -885,7 +875,6 @@ export function NewSaleModal({
             )}
           </form>
 
-          {/* Botones */}
           <div className="flex flex-wrap justify-end gap-2 pt-2">
             <Button type="button" variant="outline" onClick={onClose}>
               Cancelar
@@ -903,7 +892,6 @@ export function NewSaleModal({
               type="submit"
               form="new-sale-form"
               disabled={cart.length === 0 || !paymentMethodId}
-              loading={createState.timestamp > 0 && createState.success === false}
             >
               Confirmar venta
             </Button>
@@ -911,11 +899,12 @@ export function NewSaleModal({
         </div>
       </Modal>
 
-      {/* Modal para nombrar la venta en espera */}
       <Modal
         open={showParkModal}
         onClose={() => setShowParkModal(false)}
-        title={isResuming ? 'Actualizar venta en espera' : 'Guardar venta en espera'}
+        title={
+          isResuming ? 'Actualizar venta en espera' : 'Guardar venta en espera'
+        }
         description="Ponle un nombre para identificarla despues (ej: Mesa 3, Juan Perez)."
       >
         <form id="park-sale-form" action={parkFormAction} className="space-y-4">
