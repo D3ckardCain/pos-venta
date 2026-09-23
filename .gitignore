@@ -11,3 +11,6 @@ build/
 .typescript
 supabase/.branches
 supabase/.temp
+.dev.vars
+.open-next
+.wrangler
