@@ -8,12 +8,14 @@ interface SubmitButtonProps {
   children: ReactNode;
   loadingText?: string;
   className?: string;
+  disabled?: boolean;
 }
 
 export function SubmitButton({
   children,
   loadingText = 'Guardando...',
   className,
+  disabled = false,
 }: SubmitButtonProps) {
   const { pending } = useFormStatus();
 
@@ -21,7 +23,7 @@ export function SubmitButton({
     <Button
       type="submit"
       loading={pending}
-      disabled={pending}
+      disabled={pending || disabled}
       className={className}
     >
       {pending ? loadingText : children}
