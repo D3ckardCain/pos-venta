@@ -83,6 +83,23 @@ interface Props {
   parkedSale: ParkedSale | null;
 }
 
+function getVendorDisplayName(v: Vendor): string {
+  const profile = v.profile as
+    | { full_name?: string | null; email?: string | null }
+    | { full_name?: string | null; email?: string | null }[]
+    | null
+    | undefined;
+
+  const p = Array.isArray(profile) ? profile[0] ?? null : profile;
+
+  return (
+    p?.full_name ||
+    p?.email ||
+    v.code ||
+    v.id.slice(0, 8)
+  );
+}
+
 export function NewSaleModal({
   open,
   onClose,
@@ -521,7 +538,7 @@ export function NewSaleModal({
               <option value="">Sin asignar</option>
               {vendors.map((v) => (
                 <option key={v.id} value={v.id}>
-                  {v.profile?.full_name ?? v.code ?? v.id.slice(0, 8)}
+                  {getVendorDisplayName(v)}
                 </option>
               ))}
             </Select>

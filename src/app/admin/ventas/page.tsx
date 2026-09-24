@@ -40,10 +40,27 @@ export default async function VentasPage() {
     .eq('is_active', true)
     .order('sort_order');
 
-  const { data: vendors } = await supabase
+  const { data: vendorsRaw } = await supabase
     .from('vendors')
     .select('id, code, profile:profiles!profile_id(id, full_name, email)')
     .eq('is_active', true);
+
+  // Normalizar el profile: puede venir como objeto o como array
+  const vendors = (vendorsRaw ?? []).map((v) => {
+    const p = (v as unknown as {
+      profile:
+        | { id: string; full_name: string | null; email: string }
+        | { id: string; full_name: string | null; email: string }[]
+        | null;
+    }).profile;
+
+    const profile = Array.isArray(p) ? p[0] ?? null : p;
+
+    return {
+      ...v,
+      profile,
+    };
+  });
 
   const { data: customers } = await supabase
     .from('customers')
@@ -74,7 +91,7 @@ export default async function VentasPage() {
       initialParkedSales={(parkedSales ?? []) as unknown as ParkedSale[]}
       currencies={(currencies ?? []) as Currency[]}
       paymentMethods={(paymentMethods ?? []) as PaymentMethod[]}
-      vendors={(vendors ?? []) as unknown as Vendor[]}
+      vendors={vendors as unknown as Vendor[]}
       customers={
         (customers ?? []) as Pick<
           Customer,

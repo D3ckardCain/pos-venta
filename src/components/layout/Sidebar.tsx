@@ -25,6 +25,7 @@ import {
   History,
   Lock,
   Bell,
+  DollarSign,
 } from 'lucide-react';
 
 interface NavItem {
@@ -46,10 +47,10 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: 'Catalogo',
+    title: 'Catálogo',
     items: [
       { href: '/admin/productos', label: 'Productos', icon: Package },
-      { href: '/admin/categorias', label: 'Categorias', icon: Tags },
+      { href: '/admin/categorias', label: 'Categorías', icon: Tags },
       { href: '/admin/inventario', label: 'Inventario', icon: Boxes },
       { href: '/admin/inventario/kardex', label: 'Kardex', icon: History },
       { href: '/admin/inventario/reservas', label: 'Reservas', icon: Lock },
@@ -62,7 +63,8 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/ventas', label: 'Ventas', icon: ShoppingCart },
       { href: '/admin/pedidos', label: 'Pedidos', icon: ClipboardList },
       { href: '/admin/cajas', label: 'Cajas', icon: Wallet },
-      { href: '/admin/metodos-pago', label: 'Metodos de Pago', icon: CreditCard },
+      { href: '/admin/pagos', label: 'Pagos Vendedores', icon: DollarSign },
+      { href: '/admin/metodos-pago', label: 'Métodos de Pago', icon: CreditCard },
     ],
   },
   {
@@ -81,10 +83,10 @@ const NAV_GROUPS: NavGroup[] = [
     ],
   },
   {
-    title: 'Analisis',
+    title: 'Análisis',
     items: [
       { href: '/admin/reportes', label: 'Reportes', icon: BarChart3 },
-      { href: '/admin/auditoria', label: 'Auditoria', icon: FileSearch },
+      { href: '/admin/auditoria', label: 'Auditoría', icon: FileSearch },
     ],
   },
   {
@@ -93,8 +95,8 @@ const NAV_GROUPS: NavGroup[] = [
       { href: '/admin/usuarios', label: 'Usuarios', icon: Shield },
       { href: '/admin/roles', label: 'Roles', icon: Shield },
       { href: '/admin/notificaciones', label: 'Notificaciones', icon: Bell },
-      { href: '/admin/configuracion', label: 'Configuracion', icon: Settings },
-      { href: '/catalogo', label: 'Ver Catalogo', icon: Store },
+      { href: '/admin/configuracion', label: 'Configuración', icon: Settings },
+      { href: '/catalogo', label: 'Ver Catálogo', icon: Store },
     ],
   },
 ];
@@ -114,7 +116,6 @@ export function Sidebar() {
           </span>
         </Link>
       </div>
-
       <nav className="flex-1 overflow-y-auto px-3 py-4">
         {NAV_GROUPS.map((group) => (
           <div key={group.title} className="mb-4">

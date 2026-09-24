@@ -256,21 +256,18 @@ export interface Vendor {
   id: string;
   profile_id: string;
   code: string | null;
+  type: VendorType;
+  commission_mode: CommissionMode;
   commission_rate: number;
+  delivery_fixed_fee: number;
+  delivery_commission_rate: number;
+  pending_commission: number;
   total_sales: number;
   total_commission: number;
-  cash_differences_balance: number;
   is_active: boolean;
   created_at: string;
   updated_at: string;
-  profile?: {
-    id: string;
-    email: string;
-    full_name: string;
-    phone: string | null;
-    avatar_url: string | null;
-    is_active: boolean;
-  };
+  profile?: Pick<Profile, 'id' | 'email' | 'full_name' | 'phone' | 'avatar_url'>;
 }
 
 export type SaleStatus = 'completada' | 'cancelada' | 'devuelta' | 'pendiente';
@@ -553,4 +550,46 @@ export interface OrderStatusHistory {
   notes: string | null;
   created_at: string;
   user?: { id: string; full_name: string | null; email: string } | null;
+}
+// ====================================================
+// PAGOS A VENDEDORES Y MENSAJEROS
+// ====================================================
+export type VendorType = 'vendedor' | 'mensajero' | 'ambos';
+export type CommissionMode = 'total' | 'profit';
+export type VendorPaymentMethod = 'efectivo' | 'transferencia' | 'otro';
+export type VendorPaymentItemType = 'sale_commission' | 'delivery_fee';
+
+export interface VendorPayment {
+  id: string;
+  vendor_id: string;
+  amount_base: number;
+  base_currency_id: string;
+  amount_paid: number;
+  paid_currency_id: string;
+  exchange_rate_value: number;
+  payment_method: VendorPaymentMethod;
+  notes: string | null;
+  paid_by: string | null;
+  paid_at: string;
+  created_at: string;
+  vendor?: Pick<Vendor, 'id' | 'code' | 'type'> & {
+    profile?: Pick<Profile, 'id' | 'full_name' | 'email'>;
+  };
+  base_currency?: Currency;
+  paid_currency?: Currency;
+  paid_by_user?: Pick<Profile, 'id' | 'full_name' | 'email'> | null;
+  items?: VendorPaymentItem[];
+}
+
+export interface VendorPaymentItem {
+  id: string;
+  payment_id: string;
+  vendor_id: string;
+  item_type: VendorPaymentItemType;
+  reference_type: string;
+  reference_id: string | null;
+  amount: number;
+  base_amount: number;
+  description: string | null;
+  created_at: string;
 }

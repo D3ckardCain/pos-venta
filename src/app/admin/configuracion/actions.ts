@@ -7,17 +7,18 @@ import { z } from 'zod';
 const settingsSchema = z.object({
   business_name: z.string().trim().min(1, 'Nombre del negocio requerido').max(120),
   business_phone: z.string().trim().max(30).optional().or(z.literal('')),
-  catalog_url: z.string().trim().url('URL invalida').optional().or(z.literal('')),
+  catalog_url: z.string().trim().url('URL inválida').optional().or(z.literal('')),
   whatsapp_message_template: z.string().trim().max(500).optional().or(z.literal('')),
   points_per_currency_unit: z.coerce.number().min(0, 'No puede ser negativo').max(1000),
   allow_negative_stock: z.coerce.boolean().default(false),
   low_stock_threshold: z.coerce.number().int().min(0).max(100000),
+  payment_cycle: z.enum(['manual', 'daily', 'weekly', 'biweekly', 'monthly']),
+  payment_cycle_start_day: z.coerce.number().int().min(1).max(31),
 });
 
 export interface ActionState {
   error: string | null;
   success: boolean;
-  timestamp: number;
   fieldErrors?: Record<string, string>;
 }
 
@@ -44,6 +45,8 @@ export async function updateSystemSettingsAction(
     points_per_currency_unit: formData.get('points_per_currency_unit'),
     allow_negative_stock: formData.get('allow_negative_stock') === 'on',
     low_stock_threshold: formData.get('low_stock_threshold'),
+    payment_cycle: formData.get('payment_cycle'),
+    payment_cycle_start_day: formData.get('payment_cycle_start_day'),
   };
 
   const parsed = settingsSchema.safeParse(raw);
@@ -51,19 +54,20 @@ export async function updateSystemSettingsAction(
     return {
       error: 'Revisa los campos marcados',
       success: false,
-      timestamp: Date.now(),
       fieldErrors: zodToFieldErrors(parsed.error),
     };
   }
 
   const updates: Array<{ key: string; value: unknown; description: string }> = [
     { key: 'business_name', value: parsed.data.business_name, description: 'Nombre del negocio' },
-    { key: 'business_phone', value: parsed.data.business_phone ?? '', description: 'Telefono del negocio para WhatsApp' },
-    { key: 'catalog_url', value: parsed.data.catalog_url ?? '', description: 'URL publica del catalogo' },
+    { key: 'business_phone', value: parsed.data.business_phone ?? '', description: 'Teléfono del negocio para WhatsApp' },
+    { key: 'catalog_url', value: parsed.data.catalog_url ?? '', description: 'URL pública del catálogo' },
     { key: 'whatsapp_message_template', value: parsed.data.whatsapp_message_template ?? '', description: 'Plantilla de mensaje WhatsApp' },
     { key: 'points_per_currency_unit', value: parsed.data.points_per_currency_unit, description: 'Puntos por unidad de moneda gastada' },
     { key: 'allow_negative_stock', value: parsed.data.allow_negative_stock, description: 'Permitir stock negativo' },
     { key: 'low_stock_threshold', value: parsed.data.low_stock_threshold, description: 'Umbral de stock bajo' },
+    { key: 'payment_cycle', value: parsed.data.payment_cycle, description: 'Ciclo de pago a vendedores' },
+    { key: 'payment_cycle_start_day', value: parsed.data.payment_cycle_start_day, description: 'Día de inicio del ciclo de pago' },
   ];
 
   const userRes = await supabase.auth.getUser();
@@ -82,11 +86,13 @@ export async function updateSystemSettingsAction(
         },
         { onConflict: 'key' }
       );
-    if (error)
-      return { error: error.message, success: false, timestamp: Date.now() };
+    if (error) return { error: error.message, success: false };
   }
 
   revalidatePath('/admin/configuracion');
   revalidatePath('/admin/dashboard');
-  return { error: null, success: true, timestamp: Date.now() };
+  revalidatePath('/admin/monedas');
+  revalidatePath('/admin/pagos');
+
+  return { error: null, success: true };
 }
