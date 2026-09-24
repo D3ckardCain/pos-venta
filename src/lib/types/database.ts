@@ -2,6 +2,31 @@
 // TIPOS BASE DE BASE DE DATOS
 // ============================================
 
+export type UserRole = 'admin' | 'vendedor' | 'cliente';
+
+export interface Role {
+  id: string;
+  name: UserRole;
+  description: string | null;
+  is_system: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface Profile {
+  id: string;
+  email: string;
+  full_name: string;
+  phone: string | null;
+  avatar_url: string | null;
+  role_id: string;
+  is_active: boolean;
+  last_login: string | null;
+  created_at: string;
+  updated_at: string;
+  role?: Role;
+}
+
 export interface SystemSetting {
   id: string;
   key: string;
