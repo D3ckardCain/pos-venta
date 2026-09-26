@@ -44,7 +44,7 @@ interface Props {
   };
 }
 
-interface PaymentWithRelations extends VendorPayment {
+type PaymentWithRelations = Omit<VendorPayment, 'vendor'> & {
   vendor?: {
     id: string;
     code: string | null;
@@ -55,7 +55,7 @@ interface PaymentWithRelations extends VendorPayment {
       email: string;
     } | null;
   } | null;
-}
+};
 
 export function HistorialPagosClient({
   initialPayments,
