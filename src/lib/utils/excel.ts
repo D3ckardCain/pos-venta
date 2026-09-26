@@ -26,10 +26,10 @@ export interface ExcelColumn {
 
 export type StatusTone = 'success' | 'warning' | 'error' | 'info' | 'default';
 
-export interface ExcelSheet {
+export interface ExcelSheet<T = Record<string, unknown>> {
   name: string;
   columns: ExcelColumn[];
-  rows: Record<string, unknown>[];
+  rows: T[];
   /** Mapa de estado → tono, para colorear celdas con type='status' */
   statusMap?: Record<string, StatusTone>;
   /** Fila de totales al final (opcional) */
@@ -79,7 +79,9 @@ function getStatusTone(
 // ============================================
 // CREAR WORKBOOK CON UNA HOJA
 // ============================================
-export function buildExcelWorkbook(sheet: ExcelSheet): ExcelJS.Workbook {
+export function buildExcelWorkbook<T extends object>(
+  sheet: ExcelSheet<T>
+): ExcelJS.Workbook {
   const wb = new ExcelJS.Workbook();
   wb.creator = process.env.NEXT_PUBLIC_APP_NAME ?? 'POS';
   wb.created = new Date();
@@ -129,12 +131,12 @@ export function buildExcelWorkbook(sheet: ExcelSheet): ExcelJS.Workbook {
 
   sheet.rows.forEach((row, index) => {
     const rowIndex = dataStartRow + index;
-    const excelRow = ws.addRow(row);
+    const excelRow = ws.addRow(row as Record<string, unknown>);
     excelRow.height = 20;
 
     sheet.columns.forEach((col, colIndex) => {
       const cell = excelRow.getCell(colIndex + 1);
-      const rawValue = row[col.key];
+      const rawValue = (row as Record<string, unknown>)[col.key];
       const type = col.type ?? 'text';
 
       // -- formateo por tipo --
