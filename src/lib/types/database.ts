@@ -618,3 +618,190 @@ export interface VendorPaymentItem {
   description: string | null;
   created_at: string;
 }
+// ====================================================
+// PROMOCIONES
+// ====================================================
+export type PromotionType =
+  | 'porcentaje'
+  | 'monto_fijo'
+  | 'precio_especial'
+  | '2x1';
+
+export interface PromotionProduct {
+  promotion_id: string;
+  product_id: string;
+  variant_id: string | null;
+  product?: Pick<Product, 'id' | 'name' | 'sku'>;
+  variant?: Pick<ProductVariant, 'id' | 'name' | 'sku'> | null;
+}
+
+export interface PromotionCategory {
+  promotion_id: string;
+  category_id: string;
+  category?: Pick<Category, 'id' | 'name'>;
+}
+
+export interface Promotion {
+  id: string;
+  name: string;
+  description: string | null;
+  type: PromotionType;
+  value: number;
+  currency_id: string | null;
+  min_quantity: number | null;
+  min_amount: number | null;
+  starts_at: string;
+  ends_at: string | null;
+  max_uses: number | null;
+  current_uses: number;
+  is_active: boolean;
+  only_with_points: boolean;
+  revoked_at: string | null;
+  revoked_by: string | null;
+  revoke_reason: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+  currency?: Currency | null;
+  products?: PromotionProduct[];
+  categories?: PromotionCategory[];
+}
+
+export interface PromotionStatusHistory {
+  id: string;
+  promotion_id: string;
+  previous_status: string | null;
+  new_status: string;
+  reason: string | null;
+  changed_by: string | null;
+  changed_at: string;
+  user?: Pick<Profile, 'id' | 'full_name' | 'email'> | null;
+}
+
+// ====================================================
+// PUNTOS
+// ====================================================
+export type CustomerPointsMovementType =
+  | 'acumulacion'
+  | 'canje'
+  | 'expiracion'
+  | 'ajuste';
+
+export interface CustomerPointsMovement {
+  id: string;
+  customer_id: string;
+  movement_type: CustomerPointsMovementType;
+  points: number;
+  balance_after: number;
+  reference_type: string | null;
+  reference_id: string | null;
+  description: string | null;
+  expires_at: string | null;
+  created_by: string | null;
+  created_at: string;
+  user?: Pick<Profile, 'id' | 'full_name' | 'email'> | null;
+  customer?: Pick<Customer, 'id' | 'full_name' | 'code' | 'phone'> | null;
+}
+
+export interface PointRedemptionCode {
+  id: string;
+  customer_id: string;
+  code: string;
+  created_by: string | null;
+  created_at: string;
+  expires_at: string;
+  used_at: string | null;
+  used_in_sale_id: string | null;
+  invalidated_at: string | null;
+  invalidated_by: string | null;
+}
+
+// ====================================================
+// NOTIFICACIONES
+// ====================================================
+export interface Notification {
+  id: string;
+  user_id: string;
+  title: string;
+  message: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  is_read: boolean;
+  reference_type: string | null;
+  reference_id: string | null;
+  created_at: string;
+}
+
+// ====================================================
+// AUDITORÍA
+// ====================================================
+export interface AuditLog {
+  id: string;
+  user_id: string | null;
+  action: 'INSERT' | 'UPDATE' | 'DELETE';
+  table_name: string;
+  record_id: string | null;
+  old_data: Record<string, unknown> | null;
+  new_data: Record<string, unknown> | null;
+  ip_address: string | null;
+  user_agent: string | null;
+  reason: string | null;
+  created_at: string;
+  user?: Pick<Profile, 'id' | 'full_name' | 'email'> | null;
+}
+
+// ====================================================
+// REPORTES
+// ====================================================
+export interface SalesReportRow {
+  date: string;
+  sales_count: number;
+  gross_total: number;
+  discount_total: number;
+  net_total: number;
+  cost_total: number;
+  profit_total: number;
+  margin_percent: number;
+}
+
+export interface VendorReportRow {
+  vendor_id: string | null;
+  vendor_name: string;
+  sales_count: number;
+  base_total: number;
+  base_profit: number;
+  commission: number;
+}
+
+export interface ProductReportRow {
+  product_id: string;
+  product_name: string;
+  sku: string | null;
+  quantity_sold: number;
+  base_total: number;
+  base_cost: number;
+  base_profit: number;
+  margin_percent: number;
+}
+
+export interface CategoryReportRow {
+  category_id: string | null;
+  category_name: string;
+  quantity_sold: number;
+  base_total: number;
+  base_profit: number;
+}
+
+export interface CurrencyReportRow {
+  currency_id: string;
+  currency_code: string;
+  sales_count: number;
+  total_original: number;
+  base_total: number;
+}
+
+export interface PaymentReportRow {
+  payment_method_id: string | null;
+  payment_method_name: string;
+  sales_count: number;
+  base_total: number;
+}
