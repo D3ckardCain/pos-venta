@@ -16,7 +16,7 @@ import type {
   Customer,
   OrderStatus,
 } from '@/lib/types/database';
-import { exportOrdersCsvAction } from './actions';
+import { exportOrdersExcelAction } from './actions';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -122,7 +122,7 @@ export function PedidosClient({
 
   function handleExport() {
     startTransition(async () => {
-      const res = await exportOrdersCsvAction({
+      const res = await exportOrdersExcelAction({
         from: filterFrom || undefined,
         to: filterTo || undefined,
         status: filterStatus !== 'all' ? filterStatus : undefined,
@@ -133,8 +133,10 @@ export function PedidosClient({
         showToast(res.error, 'error');
         return;
       }
-      downloadCsv(res.csv!, res.filename!);
-      showToast('Pedidos exportados', 'success');
+      if (res.fileBase64 && res.filename) {
+        downloadExcelFromBase64(res.fileBase64, res.filename);
+        showToast('Pedidos exportados', 'success');
+      }
     });
   }
 
@@ -236,7 +238,7 @@ export function PedidosClient({
         <div className="flex gap-2">
           <Button variant="outline" onClick={handleExport} disabled={isPending}>
             <Download className="h-4 w-4" />
-            Exportar CSV
+            Exportar Excel
           </Button>
           <Button onClick={() => setNewOrderOpen(true)}>
             <Plus className="h-4 w-4" />
@@ -442,8 +444,19 @@ export function OrderStatusBadge({ status }: { status: string }) {
   return <Badge tone={cfg.tone}>{cfg.label}</Badge>;
 }
 
-function downloadCsv(csv: string, filename: string) {
-  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+// ============================================
+// DESCARGA DEL EXCEL (decodifica base64)
+// ============================================
+function downloadExcelFromBase64(base64: string, filename: string) {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  const blob = new Blob([bytes], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

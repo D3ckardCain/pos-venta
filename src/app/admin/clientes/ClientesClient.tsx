@@ -12,6 +12,7 @@ import {
   Users,
   Filter,
   Award,
+  Download,
 } from 'lucide-react';
 import type { Customer } from '@/lib/types/database';
 import {
@@ -20,6 +21,7 @@ import {
   deleteCustomerAction,
   toggleCustomerActiveAction,
   adjustPointsAction,
+  exportCustomersExcelAction,
   type ActionState,
 } from './actions';
 import { Button } from '@/components/ui/Button';
@@ -58,6 +60,7 @@ export function ClientesClient({ initialCustomers }: Props) {
   const [confirmDelete, setConfirmDelete] = useState<Customer | null>(null);
   const [adjustingPoints, setAdjustingPoints] = useState<Customer | null>(null);
   const [, startTransition] = useTransition();
+  const [isExporting, setIsExporting] = useState(false);
 
   const [createState, createFormAction] = useFormState(
     createCustomerAction,
@@ -164,6 +167,23 @@ export function ClientesClient({ initialCustomers }: Props) {
         showToast(c.is_active ? 'Cliente desactivado' : 'Cliente activado', 'success');
       }
     });
+  }
+
+  async function handleExport() {
+    setIsExporting(true);
+    try {
+      const res = await exportCustomersExcelAction();
+      if (res.error) {
+        showToast(res.error, 'error');
+        return;
+      }
+      if (res.fileBase64 && res.filename) {
+        downloadExcelFromBase64(res.fileBase64, res.filename);
+        showToast('Clientes exportados', 'success');
+      }
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   const columns: Column<Customer>[] = [
@@ -290,10 +310,20 @@ export function ClientesClient({ initialCustomers }: Props) {
             Base de clientes, historial de compras y puntos de fidelidad.
           </p>
         </div>
-        <Button onClick={openCreate}>
-          <Plus className="h-4 w-4" />
-          Nuevo cliente
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={handleExport}
+            disabled={isExporting}
+          >
+            <Download className="h-4 w-4" />
+            Exportar Excel
+          </Button>
+          <Button onClick={openCreate}>
+            <Plus className="h-4 w-4" />
+            Nuevo cliente
+          </Button>
+        </div>
       </div>
 
       <div className="rounded-lg border bg-background p-4">
@@ -544,4 +574,27 @@ function AdjustPointsModal({
       </form>
     </Modal>
   );
+}
+
+// ============================================
+// DESCARGA DEL EXCEL (decodifica base64)
+// ============================================
+function downloadExcelFromBase64(base64: string, filename: string) {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  const blob = new Blob([bytes], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }

@@ -227,10 +227,10 @@ export async function toggleVendorActiveAction(
 }
 
 // ============================================
-// EXPORTAR VENDEDORES A CSV
+// EXPORTAR VENDEDORES A EXCEL (.xlsx)
 // ============================================
-export async function exportVendorsCsvAction(): Promise<{
-  csv?: string;
+export async function exportVendorsExcelAction(): Promise<{
+  fileBase64?: string;
   filename?: string;
   error?: string;
 }> {
@@ -241,31 +241,15 @@ export async function exportVendorsCsvAction(): Promise<{
     .select(
       'code, type, commission_mode, commission_rate, delivery_fixed_fee, delivery_commission_rate, total_sales, total_commission, pending_commission, is_active, created_at, profile:profiles!profile_id(full_name, email, phone)'
     )
-    .order('created_at', { ascending: false });
+    .order('created_at', { ascending: false })
+    .limit(10000);
 
   if (error) return { error: error.message };
 
-  const rows: string[] = [];
-  rows.push(
-    [
-      'Código',
-      'Nombre',
-      'Email',
-      'Teléfono',
-      'Tipo',
-      'Modo comisión',
-      'Comisión %',
-      'Entrega fija',
-      'Entrega %',
-      'Total ventas',
-      'Total comisión',
-      'Pendiente pago',
-      'Activo',
-      'Registrado',
-    ].join(',')
-  );
-
-  for (const v of data ?? []) {
+  // --------------------------------------------
+  // Preparar filas planas
+  // --------------------------------------------
+  const rows = (data ?? []).map((v) => {
     const row = v as unknown as {
       code: string | null;
       type: string;
@@ -281,35 +265,77 @@ export async function exportVendorsCsvAction(): Promise<{
       profile?: { full_name?: string; email?: string; phone?: string } | null;
     };
 
-    rows.push(
-      [
-        csvEscape(row.code ?? ''),
-        csvEscape(row.profile?.full_name ?? ''),
-        csvEscape(row.profile?.email ?? ''),
-        csvEscape(row.profile?.phone ?? ''),
-        row.type,
-        row.commission_mode,
-        Number(row.commission_rate).toFixed(2),
-        Number(row.delivery_fixed_fee).toFixed(4),
-        Number(row.delivery_commission_rate).toFixed(2),
-        Number(row.total_sales).toFixed(4),
-        Number(row.total_commission).toFixed(4),
-        Number(row.pending_commission).toFixed(4),
-        row.is_active ? 'Sí' : 'No',
-        new Date(row.created_at).toISOString(),
-      ].join(',')
-    );
-  }
+    return {
+      code: row.code ?? '',
+      full_name: row.profile?.full_name ?? '',
+      email: row.profile?.email ?? '',
+      phone: row.profile?.phone ?? '',
+      type: row.type,
+      commission_mode: row.commission_mode,
+      commission_rate: Number(row.commission_rate),
+      delivery_fixed_fee: Number(row.delivery_fixed_fee),
+      delivery_commission_rate: Number(row.delivery_commission_rate),
+      total_sales: Number(row.total_sales),
+      total_commission: Number(row.total_commission),
+      pending_commission: Number(row.pending_commission),
+      is_active: row.is_active,
+      created_at: row.created_at,
+    };
+  });
+
+  // --------------------------------------------
+  // Totales
+  // --------------------------------------------
+  const totalSales = rows.reduce((sum, r) => sum + r.total_sales, 0);
+  const totalCommission = rows.reduce((sum, r) => sum + r.total_commission, 0);
+  const totalPending = rows.reduce((sum, r) => sum + r.pending_commission, 0);
+
+  const totals: Record<string, string | number> = {
+    code: 'TOTALES',
+    total_sales: totalSales,
+    total_commission: totalCommission,
+    pending_commission: totalPending,
+  };
+
+  // --------------------------------------------
+  // Construir workbook
+  // --------------------------------------------
+  const { buildExcelWorkbook, workbookToBuffer } = await import(
+    '@/lib/utils/excel'
+  );
+
+  const wb = buildExcelWorkbook({
+    name: 'Vendedores',
+    columns: [
+      { header: 'Código', key: 'code', width: 12 },
+      { header: 'Nombre', key: 'full_name', width: 28 },
+      { header: 'Email', key: 'email', width: 28 },
+      { header: 'Teléfono', key: 'phone', width: 16 },
+      { header: 'Tipo', key: 'type', type: 'status', width: 14 },
+      { header: 'Modo comisión', key: 'commission_mode', width: 16 },
+      { header: 'Comisión %', key: 'commission_rate', type: 'number', width: 14 },
+      { header: 'Entrega fija', key: 'delivery_fixed_fee', type: 'currency', width: 14 },
+      { header: 'Entrega %', key: 'delivery_commission_rate', type: 'number', width: 14 },
+      { header: 'Total ventas', key: 'total_sales', type: 'currency', width: 16 },
+      { header: 'Total comisión', key: 'total_commission', type: 'currency', width: 16 },
+      { header: 'Pendiente pago', key: 'pending_commission', type: 'currency', width: 16 },
+      { header: 'Activo', key: 'is_active', type: 'boolean', width: 10 },
+      { header: 'Registrado', key: 'created_at', type: 'date', width: 14 },
+    ],
+    rows,
+    statusMap: {
+      vendedor: 'info',
+      mensajero: 'warning',
+      ambos: 'success',
+    },
+    totals,
+  });
+
+  const buffer = await workbookToBuffer(wb);
+  const fileBase64 = Buffer.from(buffer).toString('base64');
 
   return {
-    csv: rows.join('\n'),
-    filename: `vendedores-${new Date().toISOString().slice(0, 10)}.csv`,
+    fileBase64,
+    filename: `vendedores-${new Date().toISOString().slice(0, 10)}.xlsx`,
   };
-}
-
-function csvEscape(value: string): string {
-  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
 }

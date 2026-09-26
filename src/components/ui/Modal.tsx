@@ -47,7 +47,7 @@ export function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:items-center"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
       role="dialog"
       aria-modal="true"
       aria-labelledby="modal-title"
@@ -56,10 +56,11 @@ export function Modal({
       }}
     >
       <div
-        className={`w-full ${sizeClasses[size]} rounded-lg border bg-background shadow-lg`}
+        className={`w-full ${sizeClasses[size]} flex max-h-[90vh] flex-col rounded-lg border bg-background shadow-lg`}
       >
-        <div className="flex items-start justify-between border-b px-5 py-4">
-          <div>
+        {/* Header fijo */}
+        <div className="flex shrink-0 items-start justify-between border-b px-5 py-4">
+          <div className="min-w-0 flex-1 pr-3">
             <h2 id="modal-title" className="text-base font-semibold">
               {title}
             </h2>
@@ -73,14 +74,18 @@ export function Modal({
             type="button"
             onClick={onClose}
             aria-label="Cerrar"
-            className="rounded-md p-1 text-muted-foreground hover:bg-muted"
+            className="shrink-0 rounded-md p-1 text-muted-foreground hover:bg-muted"
           >
             <X className="h-4 w-4" />
           </button>
         </div>
-        <div className="px-5 py-4">{children}</div>
+
+        {/* Contenido con scroll */}
+        <div className="flex-1 overflow-y-auto px-5 py-4">{children}</div>
+
+        {/* Footer fijo */}
         {footer && (
-          <div className="flex justify-end gap-2 border-t px-5 py-3">
+          <div className="flex shrink-0 justify-end gap-2 border-t px-5 py-3">
             {footer}
           </div>
         )}

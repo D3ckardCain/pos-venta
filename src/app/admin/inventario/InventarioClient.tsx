@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import Link from 'next/link';
 import {
   Boxes,
@@ -18,7 +18,7 @@ import type {
   InventoryMovement,
 } from '@/lib/types/database';
 import {
-  exportInventoryCsvAction,
+  exportInventoryExcelAction,
   recalculateReservedAction,
 } from './actions';
 import { Button } from '@/components/ui/Button';
@@ -132,13 +132,15 @@ export function InventarioClient({
 
   function handleExport() {
     startTransition(async () => {
-      const res = await exportInventoryCsvAction();
+      const res = await exportInventoryExcelAction();
       if (res.error) {
         showToast(res.error, 'error');
         return;
       }
-      downloadCsv(res.csv!, res.filename!);
-      showToast('Inventario exportado', 'success');
+      if (res.fileBase64 && res.filename) {
+        downloadExcelFromBase64(res.fileBase64, res.filename);
+        showToast('Inventario exportado', 'success');
+      }
     });
   }
 
@@ -354,7 +356,7 @@ export function InventarioClient({
           </Button>
           <Button variant="outline" onClick={handleExport} disabled={isPending}>
             <Download className="h-4 w-4" />
-            Exportar CSV
+            Exportar Excel
           </Button>
         </div>
       </div>
@@ -579,8 +581,19 @@ export function MovementTypeBadge({ type }: { type: string }) {
   return <Badge tone={cfg.tone}>{cfg.label}</Badge>;
 }
 
-function downloadCsv(csv: string, filename: string) {
-  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+// ============================================
+// DESCARGA DEL EXCEL (decodifica base64)
+// ============================================
+function downloadExcelFromBase64(base64: string, filename: string) {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  const blob = new Blob([bytes], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

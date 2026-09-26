@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useTransition } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useFormState } from 'react-dom';
 import {
@@ -10,6 +11,7 @@ import {
   AlertCircle,
   Filter,
   DollarSign,
+  History,
 } from 'lucide-react';
 import type { Vendor, Currency } from '@/lib/types/database';
 import { payVendorAction, type ActionState } from './actions';
@@ -220,7 +222,7 @@ export function PagosClient({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight">
             Pagos a Vendedores y Mensajeros
@@ -230,6 +232,12 @@ export function PagosClient({
             entregues el dinero.
           </p>
         </div>
+        <Link href="/admin/pagos/historial">
+          <Button variant="outline">
+            <History className="h-4 w-4" />
+            Ver historial
+          </Button>
+        </Link>
       </div>
 
       {/* KPIs */}

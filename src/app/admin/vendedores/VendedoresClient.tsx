@@ -21,7 +21,7 @@ import {
   createVendorAction,
   updateVendorAction,
   toggleVendorActiveAction,
-  exportVendorsCsvAction,
+  exportVendorsExcelAction,
   type ActionState,
 } from './actions';
 import { Button } from '@/components/ui/Button';
@@ -58,6 +58,7 @@ export function VendedoresClient({ initialVendors, primaryCurrency }: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Vendor | null>(null);
   const [isPending, startTransition] = useTransition();
+  const [isExporting, setIsExporting] = useState(false);
 
   const [createState, createFormAction] = useFormState(
     createVendorAction,
@@ -147,16 +148,21 @@ export function VendedoresClient({ initialVendors, primaryCurrency }: Props) {
     });
   }
 
-  function handleExport() {
-    startTransition(async () => {
-      const res = await exportVendorsCsvAction();
+  async function handleExport() {
+    setIsExporting(true);
+    try {
+      const res = await exportVendorsExcelAction();
       if (res.error) {
         showToast(res.error, 'error');
         return;
       }
-      downloadCsv(res.csv!, res.filename!);
-      showToast('Vendedores exportados', 'success');
-    });
+      if (res.fileBase64 && res.filename) {
+        downloadExcelFromBase64(res.fileBase64, res.filename);
+        showToast('Vendedores exportados', 'success');
+      }
+    } finally {
+      setIsExporting(false);
+    }
   }
 
   const columns: Column<Vendor>[] = [
@@ -311,9 +317,13 @@ export function VendedoresClient({ initialVendors, primaryCurrency }: Props) {
           </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" onClick={handleExport} disabled={isPending}>
+          <Button
+            variant="outline"
+            onClick={handleExport}
+            disabled={isExporting}
+          >
             <Download className="h-4 w-4" />
-            Exportar CSV
+            Exportar Excel
           </Button>
           <Button
             onClick={() => {
@@ -765,8 +775,19 @@ function KpiCard({
   );
 }
 
-function downloadCsv(csv: string, filename: string) {
-  const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8;' });
+// ============================================
+// DESCARGA DEL EXCEL (decodifica base64)
+// ============================================
+function downloadExcelFromBase64(base64: string, filename: string) {
+  const binaryString = atob(base64);
+  const bytes = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+
+  const blob = new Blob([bytes], {
+    type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;

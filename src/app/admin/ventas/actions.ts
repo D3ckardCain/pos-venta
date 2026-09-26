@@ -453,10 +453,10 @@ export async function findByBarcodeAction(
 }
 
 // ============================================
-// EXPORTAR VENTAS A CSV
+// EXPORTAR VENTAS A EXCEL (.xlsx)
 // ============================================
 
-export async function exportSalesCsvAction(filters: {
+export async function exportSalesExcelAction(filters: {
   from?: string;
   to?: string;
   status?: string;
@@ -464,7 +464,7 @@ export async function exportSalesCsvAction(filters: {
   payment_method_id?: string;
   vendor_id?: string;
   customer_id?: string;
-}): Promise<{ csv?: string; filename?: string; error?: string }> {
+}): Promise<{ fileBase64?: string; filename?: string; error?: string }> {
   const supabase = await createClient();
 
   let query = supabase
@@ -493,27 +493,10 @@ export async function exportSalesCsvAction(filters: {
   const { data, error } = await query;
   if (error) return { error: error.message };
 
-  const rows: string[] = [];
-  rows.push(
-    [
-      'Numero',
-      'Fecha',
-      'Estado',
-      'Cliente',
-      'Vendedor',
-      'Metodo de pago',
-      'Moneda',
-      'Tipo de cambio',
-      'Subtotal',
-      'Descuento',
-      'Total original',
-      'Moneda base',
-      'Total base',
-      'Utilidad base',
-    ].join(',')
-  );
-
-  for (const s of data ?? []) {
+  // --------------------------------------------
+  // Preparar filas planas
+  // --------------------------------------------
+  const rows = (data ?? []).map((s) => {
     const row = s as unknown as {
       sale_number: string;
       created_at: string;
@@ -523,42 +506,99 @@ export async function exportSalesCsvAction(filters: {
       total: number;
       base_total: number;
       base_profit: number;
-      currency?: { code?: string };
-      base_currency?: { code?: string };
+      currency?: { code?: string } | null;
+      base_currency?: { code?: string } | null;
       exchange_rate_value: number;
       customer?: { full_name?: string } | null;
       vendor?: { code?: string; profile?: { full_name?: string } } | null;
       payment_method?: { name?: string } | null;
     };
-    rows.push(
-      [
-        csvEscape(row.sale_number),
-        new Date(row.created_at).toISOString(),
-        row.status,
-        csvEscape(row.customer?.full_name ?? ''),
-        csvEscape(row.vendor?.profile?.full_name ?? row.vendor?.code ?? ''),
-        csvEscape(row.payment_method?.name ?? ''),
-        csvEscape(row.currency?.code ?? ''),
-        Number(row.exchange_rate_value).toFixed(8),
-        Number(row.subtotal).toFixed(4),
-        Number(row.discount_amount).toFixed(4),
-        Number(row.total).toFixed(4),
-        csvEscape(row.base_currency?.code ?? ''),
-        Number(row.base_total).toFixed(4),
-        Number(row.base_profit).toFixed(4),
-      ].join(',')
-    );
-  }
+
+    return {
+      sale_number: row.sale_number,
+      created_at: row.created_at,
+      status: row.status,
+      customer_name: row.customer?.full_name ?? '',
+      vendor_name: row.vendor?.profile?.full_name ?? row.vendor?.code ?? '',
+      payment_method: row.payment_method?.name ?? '',
+      currency: row.currency?.code ?? '',
+      exchange_rate: Number(row.exchange_rate_value),
+      subtotal: Number(row.subtotal),
+      discount_amount: Number(row.discount_amount),
+      total: Number(row.total),
+      base_currency: row.base_currency?.code ?? '',
+      base_total: Number(row.base_total),
+      base_profit: Number(row.base_profit),
+    };
+  });
+
+  // --------------------------------------------
+  // Totales
+  // --------------------------------------------
+  const totalOriginal = rows.reduce((sum, r) => sum + r.total, 0);
+  const totalBase = rows.reduce((sum, r) => sum + r.base_total, 0);
+  const totalProfit = rows.reduce((sum, r) => sum + r.base_profit, 0);
+  const baseCurrencyCode = rows[0]?.base_currency ?? '';
+
+  const totals: Record<string, string | number> = {
+    sale_number: 'TOTALES',
+    total: totalOriginal,
+    base_total: totalBase,
+    base_profit: totalProfit,
+  };
+
+  // --------------------------------------------
+  // Construir workbook
+  // --------------------------------------------
+  const { buildExcelWorkbook, workbookToBuffer } = await import(
+    '@/lib/utils/excel'
+  );
+
+  const wb = buildExcelWorkbook({
+    name: 'Ventas',
+    columns: [
+      { header: 'Número', key: 'sale_number', width: 20 },
+      { header: 'Fecha', key: 'created_at', type: 'datetime', width: 20 },
+      { header: 'Estado', key: 'status', type: 'status', width: 14 },
+      { header: 'Cliente', key: 'customer_name', width: 24 },
+      { header: 'Vendedor', key: 'vendor_name', width: 24 },
+      { header: 'Método de pago', key: 'payment_method', width: 18 },
+      { header: 'Moneda', key: 'currency', width: 10 },
+      { header: 'T. cambio', key: 'exchange_rate', type: 'number', width: 14 },
+      { header: 'Subtotal', key: 'subtotal', type: 'currency', width: 14 },
+      { header: 'Descuento', key: 'discount_amount', type: 'currency', width: 14 },
+      { header: 'Total original', key: 'total', type: 'currency', width: 16 },
+      { header: 'Moneda base', key: 'base_currency', width: 12 },
+      {
+        header: 'Total base',
+        key: 'base_total',
+        type: 'currency',
+        currencyCode: baseCurrencyCode,
+        width: 16,
+      },
+      {
+        header: 'Utilidad base',
+        key: 'base_profit',
+        type: 'currency',
+        currencyCode: baseCurrencyCode,
+        width: 16,
+      },
+    ],
+    rows,
+    statusMap: {
+      completada: 'success',
+      cancelada: 'error',
+      devuelta: 'warning',
+      pendiente: 'info',
+    },
+    totals,
+  });
+
+  const buffer = await workbookToBuffer(wb);
+  const fileBase64 = Buffer.from(buffer).toString('base64');
 
   return {
-    csv: rows.join('\n'),
-    filename: `ventas-${new Date().toISOString().slice(0, 10)}.csv`,
+    fileBase64,
+    filename: `ventas-${new Date().toISOString().slice(0, 10)}.xlsx`,
   };
-}
-
-function csvEscape(value: string): string {
-  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
 }

@@ -154,11 +154,11 @@ export async function recalculateReservedAction(): Promise<ActionState> {
 }
 
 // ============================================
-// EXPORTAR INVENTARIO A CSV
+// EXPORTAR INVENTARIO A EXCEL (.xlsx)
 // ============================================
 
-export async function exportInventoryCsvAction(): Promise<{
-  csv?: string;
+export async function exportInventoryExcelAction(): Promise<{
+  fileBase64?: string;
   filename?: string;
   error?: string;
 }> {
@@ -173,72 +173,103 @@ export async function exportInventoryCsvAction(): Promise<{
 
   if (error) return { error: error.message };
 
-  const rows: string[] = [];
-  rows.push(
-    [
-      'Producto',
-      'SKU',
-      'Variante',
-      'SKU Variante',
-      'Unidad',
-      'Stock',
-      'Reservado',
-      'Disponible',
-      'Costo Unitario',
-      'Valor Total',
-      'Stock Minimo',
-      'Actualizado',
-    ].join(',')
-  );
-
-  for (const inv of data ?? []) {
+  // --------------------------------------------
+  // Preparar filas planas
+  // --------------------------------------------
+  const rows = (data ?? []).map((inv) => {
     const p = inv as unknown as {
-      product?: { name?: string; sku?: string; unit?: string; cost?: number; min_stock?: number };
+      product?: {
+        name?: string;
+        sku?: string;
+        unit?: string;
+        cost?: number;
+        min_stock?: number;
+      };
       variant?: { name?: string; sku?: string } | null;
       stock: number;
       reserved: number;
       available: number;
       updated_at: string;
     };
-    const product = p.product;
-    const variant = p.variant;
+
     const stock = Number(p.stock);
-    const cost = Number(product?.cost ?? 0);
-    rows.push(
-      [
-        csvEscape(product?.name ?? ''),
-        csvEscape(product?.sku ?? ''),
-        csvEscape(variant?.name ?? ''),
-        csvEscape(variant?.sku ?? ''),
-        csvEscape(product?.unit ?? ''),
-        stock.toString(),
-        Number(p.reserved).toString(),
-        Number(p.available).toString(),
-        cost.toFixed(4),
-        (stock * cost).toFixed(4),
-        Number(product?.min_stock ?? 0).toString(),
-        new Date(p.updated_at).toISOString(),
-      ].join(',')
-    );
-  }
+    const cost = Number(p.product?.cost ?? 0);
+
+    return {
+      product_name: p.product?.name ?? '',
+      sku: p.product?.sku ?? '',
+      variant_name: p.variant?.name ?? '',
+      variant_sku: p.variant?.sku ?? '',
+      unit: p.product?.unit ?? '',
+      stock,
+      reserved: Number(p.reserved),
+      available: Number(p.available),
+      unit_cost: cost,
+      total_value: stock * cost,
+      min_stock: Number(p.product?.min_stock ?? 0),
+      updated_at: p.updated_at,
+    };
+  });
+
+  // --------------------------------------------
+  // Totales
+  // --------------------------------------------
+  const totalValue = rows.reduce((sum, r) => sum + r.total_value, 0);
+  const totalStock = rows.reduce((sum, r) => sum + r.stock, 0);
+
+  const totals: Record<string, string | number> = {
+    product_name: 'TOTALES',
+    stock: totalStock,
+    total_value: totalValue,
+  };
+
+  // --------------------------------------------
+  // Construir workbook
+  // --------------------------------------------
+  const { buildExcelWorkbook, workbookToBuffer } = await import(
+    '@/lib/utils/excel'
+  );
+
+  const wb = buildExcelWorkbook({
+    name: 'Inventario',
+    columns: [
+      { header: 'Producto', key: 'product_name', width: 30 },
+      { header: 'SKU', key: 'sku', width: 16 },
+      { header: 'Variante', key: 'variant_name', width: 20 },
+      { header: 'SKU Variante', key: 'variant_sku', width: 16 },
+      { header: 'Unidad', key: 'unit', width: 12 },
+      { header: 'Stock', key: 'stock', type: 'number', width: 12 },
+      { header: 'Reservado', key: 'reserved', type: 'number', width: 12 },
+      { header: 'Disponible', key: 'available', type: 'number', width: 12 },
+      { header: 'Costo Unitario', key: 'unit_cost', type: 'currency', width: 16 },
+      { header: 'Valor Total', key: 'total_value', type: 'currency', width: 16 },
+      { header: 'Stock Mínimo', key: 'min_stock', type: 'number', width: 14 },
+      { header: 'Actualizado', key: 'updated_at', type: 'datetime', width: 20 },
+    ],
+    rows,
+    totals,
+  });
+
+  const buffer = await workbookToBuffer(wb);
+  const fileBase64 = Buffer.from(buffer).toString('base64');
 
   return {
-    csv: rows.join('\n'),
-    filename: `inventario-${new Date().toISOString().slice(0, 10)}.csv`,
+    fileBase64,
+    filename: `inventario-${new Date().toISOString().slice(0, 10)}.xlsx`,
   };
 }
 
 // ============================================
-// EXPORTAR KARDEX A CSV
+// EXPORTAR KARDEX A EXCEL (.xlsx)
 // ============================================
 
-export async function exportKardexCsvAction(filters: {
+export async function exportKardexExcelAction(filters: {
   product_id?: string;
   variant_id?: string;
   movement_type?: string;
   from?: string;
   to?: string;
-}): Promise<{ csv?: string; filename?: string; error?: string }> {
+}): Promise<{ fileBase64?: string; filename?: string; error?: string }> {
   const supabase = await createClient();
 
   let query = supabase
@@ -258,26 +289,10 @@ export async function exportKardexCsvAction(filters: {
   const { data, error } = await query;
   if (error) return { error: error.message };
 
-  const rows: string[] = [];
-  rows.push(
-    [
-      'Fecha',
-      'Tipo',
-      'Producto',
-      'SKU',
-      'Variante',
-      'Cantidad',
-      'Stock Antes',
-      'Stock Despues',
-      'Costo Unitario',
-      'Referencia',
-      'Motivo',
-      'Notas',
-      'Usuario',
-    ].join(',')
-  );
-
-  for (const m of data ?? []) {
+  // --------------------------------------------
+  // Preparar filas planas
+  // --------------------------------------------
+  const rows = (data ?? []).map((m) => {
     const row = m as unknown as {
       created_at: string;
       movement_type: string;
@@ -292,34 +307,66 @@ export async function exportKardexCsvAction(filters: {
       variant?: { name?: string; sku?: string } | null;
       user?: { full_name?: string; email?: string } | null;
     };
-    rows.push(
-      [
-        new Date(row.created_at).toISOString(),
-        row.movement_type,
-        csvEscape(row.product?.name ?? ''),
-        csvEscape(row.product?.sku ?? ''),
-        csvEscape(row.variant?.name ?? ''),
-        Number(row.quantity).toString(),
-        Number(row.stock_before).toString(),
-        Number(row.stock_after).toString(),
-        row.unit_cost !== null ? Number(row.unit_cost).toFixed(4) : '',
-        csvEscape(row.reference_type ?? ''),
-        csvEscape(row.reason ?? ''),
-        csvEscape(row.notes ?? ''),
-        csvEscape(row.user?.full_name ?? row.user?.email ?? ''),
-      ].join(',')
-    );
-  }
+
+    return {
+      created_at: row.created_at,
+      movement_type: row.movement_type,
+      product_name: row.product?.name ?? '',
+      sku: row.product?.sku ?? '',
+      variant_name: row.variant?.name ?? '',
+      quantity: Number(row.quantity),
+      stock_before: Number(row.stock_before),
+      stock_after: Number(row.stock_after),
+      unit_cost: row.unit_cost !== null ? Number(row.unit_cost) : 0,
+      reference_type: row.reference_type ?? '',
+      reason: row.reason ?? '',
+      notes: row.notes ?? '',
+      user_name: row.user?.full_name ?? row.user?.email ?? '',
+    };
+  });
+
+  // --------------------------------------------
+  // Construir workbook
+  // --------------------------------------------
+  const { buildExcelWorkbook, workbookToBuffer } = await import(
+    '@/lib/utils/excel'
+  );
+
+  const wb = buildExcelWorkbook({
+    name: 'Kardex',
+    columns: [
+      { header: 'Fecha', key: 'created_at', type: 'datetime', width: 20 },
+      { header: 'Tipo', key: 'movement_type', type: 'status', width: 16 },
+      { header: 'Producto', key: 'product_name', width: 30 },
+      { header: 'SKU', key: 'sku', width: 16 },
+      { header: 'Variante', key: 'variant_name', width: 20 },
+      { header: 'Cantidad', key: 'quantity', type: 'number', width: 12 },
+      { header: 'Stock Antes', key: 'stock_before', type: 'number', width: 12 },
+      { header: 'Stock Después', key: 'stock_after', type: 'number', width: 12 },
+      { header: 'Costo Unitario', key: 'unit_cost', type: 'currency', width: 16 },
+      { header: 'Referencia', key: 'reference_type', width: 16 },
+      { header: 'Motivo', key: 'reason', width: 30 },
+      { header: 'Notas', key: 'notes', width: 30 },
+      { header: 'Usuario', key: 'user_name', width: 22 },
+    ],
+    rows,
+    statusMap: {
+      entrada: 'success',
+      salida: 'info',
+      ajuste: 'warning',
+      devolucion: 'success',
+      cancelacion: 'error',
+      reserva: 'info',
+      liberacion_reserva: 'default',
+      transferencia: 'default',
+    },
+  });
+
+  const buffer = await workbookToBuffer(wb);
+  const fileBase64 = Buffer.from(buffer).toString('base64');
 
   return {
-    csv: rows.join('\n'),
-    filename: `kardex-${new Date().toISOString().slice(0, 10)}.csv`,
+    fileBase64,
+    filename: `kardex-${new Date().toISOString().slice(0, 10)}.xlsx`,
   };
-}
-
-function csvEscape(value: string): string {
-  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
 }
