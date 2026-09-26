@@ -49,6 +49,11 @@ import { DataTable, type Column } from '@/components/shared/DataTable';
 import { EmptyState } from '@/components/shared/EmptyState';
 import { useToast } from '@/components/ui/Toast';
 import { formatCurrency } from '@/lib/utils/currency';
+import {
+  shareOnWhatsApp,
+  buildPointsMessage,
+  buildRedemptionCodeMessage,
+} from '@/lib/utils/whatsapp';
 
 const initialActionState: ActionState = {
   error: null,
@@ -409,21 +414,22 @@ function CustomersTab({
       return;
     }
     const base =
-      typeof window !== 'undefined' ? window.location.origin : '';
+      process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ||
+      (typeof window !== 'undefined' ? window.location.origin : '');
     const url = `${base}/mis-puntos/${c.public_secret_code}`;
     try {
       await navigator.clipboard.writeText(url);
       showToast('Link copiado al portapapeles', 'success');
     } catch {
-      // Fallback si el portapapeles no está disponible
       window.prompt('Copia este link:', url);
     }
   }
 
   // ============================================================
   // Enviar link de puntos por WhatsApp
+  // Mismo patrón que el catálogo: wa.me + shareOnWhatsApp
   // ============================================================
-    function handleSendPoints(c: CustomerWithPoints) {
+  function handleSendPoints(c: CustomerWithPoints) {
     if (!c.public_secret_code) {
       showToast('Este cliente no tiene código público generado', 'error');
       return;
@@ -433,8 +439,6 @@ function CustomersTab({
       return;
     }
 
-    // URL pública base: prioriza la variable de entorno (Cloudflare)
-    // y cae a window.location.origin como fallback (localhost)
     const base =
       process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, '') ||
       (typeof window !== 'undefined' ? window.location.origin : '');
@@ -443,16 +447,14 @@ function CustomersTab({
 
     const valueText = primaryCurrency
       ? formatCurrency(c.points * pointValue, primaryCurrency)
-      : `${c.points} puntos`;
+      : null;
 
-    const message =
-      `Hola ${c.full_name}, te comparto tus puntos de fidelidad:\n\n` +
-      `Tienes *${c.points} puntos* acumulados${primaryCurrency ? `, que equivalen a *${valueText}*` : ''}.\n\n` +
-      `Míralos aquí:\n${url}`;
+    const message = buildPointsMessage(c.full_name, c.points, valueText, url);
 
-    const encoded = encodeURIComponent(message);
-    const cleanPhone = c.phone.replace(/\D/g, '');
-    window.location.href = `whatsapp://send?phone=${cleanPhone}&text=${encoded}`;
+    shareOnWhatsApp({
+      phone: c.phone,
+      message,
+    });
   }
 
   const columns: Column<CustomerWithPoints>[] = [
@@ -1059,17 +1061,19 @@ function GenerateCodeModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [customer.id]);
 
+  // ============================================================
+  // Enviar código por WhatsApp
+  // Mismo patrón que el catálogo: wa.me + shareOnWhatsApp
+  // ============================================================
   function sendByWhatsApp() {
     if (!code || !customer.phone) return;
-    const cleanPhone = customer.phone.replace(/\D/g, '');
-    const message =
-      `Hola ${customer.full_name}, tu código para canjear tus puntos es:\n\n` +
-      `*${code}*\n\n` +
-      `Válido por ${expiresAt ? 'unos minutos' : 'poco tiempo'}. Muéstralo al vendedor cuando estés en la tienda.`;
-    const encoded = encodeURIComponent(message);
 
-    // Intenta abrir la app nativa; si no está, el navegador pregunta.
-    window.location.href = `whatsapp://send?phone=${cleanPhone}&text=${encoded}`;
+    const message = buildRedemptionCodeMessage(customer.full_name, code);
+
+    shareOnWhatsApp({
+      phone: customer.phone,
+      message,
+    });
   }
 
   return (

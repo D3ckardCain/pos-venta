@@ -415,11 +415,13 @@ export function ClientesClient({ initialCustomers }: Props) {
               defaultValue={editing?.email ?? ''}
               error={formState.fieldErrors?.email}
             />
-            <Input
+                       <Input
               label="Telefono (opcional)"
               name="phone"
+              placeholder="+5353623774"
               defaultValue={editing?.phone ?? ''}
               error={formState.fieldErrors?.phone}
+              hint="Incluye el codigo de pais. Ej: +5353623774 para Cuba, +5215512345678 para Mexico."
             />
           </div>
 
